@@ -68,7 +68,7 @@ AMain::AMain()
 	bIsGround = false;
 
 	/* for Start Climb */
-	bIsCanGrab = false;
+	bIsCanGrabWall = false;
 	ClimbStartTerm = 0.15f;
 	InitClimbStartTerm = 0.15f;
 
@@ -202,37 +202,22 @@ void AMain::MovementStatusManager(float DeltaTime)
 		}
 		else
 		{
-			SetTooFarFromWall();
-			SetIsBodyWallFacingAndNormalVector();
-			SetIsGround();
-
-			if (bTooFarFromWall)
-			{
-				const FVector Direction = GetActorForwardVector();
-				AddMovementInput(Direction, 1.0f);
-			}
+			AttachCharacterToWall();
 
 			if (ClimbMaintainCondition())
 			{
 				if (!(GetClimbStatus() == EClimbStatus::ECS_TurnCorner))
 				{
-					SetIsBottomEdge();
-					SetIsLowerRightLeftEdgeAtGround();
-					SetIsTopEdge();
-					SetClimbUpEnoughSpace();
 					if (ClimbUpCondition())
 					{
+						// Climb Up
 						ClimbUp();
 					}
 					else
 					{
-						SetIsRightLeftEdgeAtClimbing();
-						SetCanLeftTurnInsideCorner();
-						SetCanRightTurnInsideCorner();
-						SetCanLeftTurnOutsideCorner();
-						SetCanRightTurnOutsideCorner();
+						// Can do Turn Corner Check
+						TurnCornerVariableRenewal();
 
-						// Turn Corner
 						if (TurnCornerInsideRightCondition())
 						{
 							TurnCornerInsideRight();
@@ -279,19 +264,7 @@ void AMain::MovementStatusManager(float DeltaTime)
 	}
 	else if (GetMovementStatus() == EMovementStatus::EMS_ClimbUp)
 	{
-		SetClimbUpTraceGround();
-		SetIsBodyWallFacingAndNormalVector();
-		if (bClimbUpTraceGround && !bIsBodyWallFacing)
-		{
-			GetCharacterMovement()->bOrientRotationToMovement = true;
-			GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Falling);
-			const FVector Direction = -GetActorUpVector();
-			FVector Position = GetActorLocation();
-			Position.Z = Position.Z - 1.f;
-			SetActorLocation(Position);
-			SetMovementStatus(EMovementStatus::EMS_Normal);
-
-		}
+		AttachCharacterToGround();
 	}
 	else if (GetMovementStatus() == EMovementStatus::EMS_WallJumping)
 	{
@@ -299,17 +272,13 @@ void AMain::MovementStatusManager(float DeltaTime)
 		{
 			StopAnimMontage();
 			SetMovementStatus(EMovementStatus::EMS_Normal);
-			bIsCanGrab = false;
+			bIsCanGrabWall = false;
 		}
 		else
 		{
 			if (!(GetStaminaStatus() == EStaminaStatus::ESS_Exhausted))
 			{
-				SetIsRightLeftEdgeAtClimbing();
-				SetIsFoothold();
-				SetIsTopEdge();
-				SetIsBodyWallFacingAndNormalVector();
-				if (bIsCanGrab && (ClimbStartEnoughSpaceCondition()))
+				if (bIsCanGrabWall && (ClimbStartEnoughSpaceCondition()))
 				{
 					StartClimb();
 				}
@@ -322,7 +291,6 @@ void AMain::MovementStatusManager(float DeltaTime)
 		{
 			if (EnoughSpaceForGliding())
 			{
-
 				if (this->GetVelocity().Z < -200.f)
 				{
 					GetCharacterMovement()->GravityScale = 0.0f;
@@ -333,10 +301,6 @@ void AMain::MovementStatusManager(float DeltaTime)
 					GetCharacterMovement()->GravityScale = 0.3f;
 				}
 
-				SetIsRightLeftEdgeAtNormal();
-				SetIsFoothold();
-				SetIsBodyWallFacingAndNormalVector();
-				SetIsTopEdge();
 
 				if (ClimbStartEnoughSpaceCondition())
 				{
@@ -373,17 +337,13 @@ void AMain::MovementStatusManager(float DeltaTime)
 		FVector Position = GetActorLocation();
 		Position.Z = Position.Z - 0.1f;
 		SetActorLocation(Position);
-		if (bIsCanGrab)
+		if (bIsCanGrabWall)
 		{
-			SetIsRightLeftEdgeAtNormal();
-			SetIsFoothold();
-			SetIsTopEdge();
-			SetIsBodyWallFacingAndNormalVector();
 
 			if (ClimbStartEnoughSpaceCondition())
 			{
 				StartClimb();
-				bIsCanGrab = false;
+				bIsCanGrabWall = false;
 			}
 		}
 	}
@@ -409,12 +369,6 @@ void AMain::MovementStatusManager(float DeltaTime)
 				GetCharacterMovement()->MaxWalkSpeed = 500.f;
 			}
 
-			SetIsRightLeftEdgeAtNormal();
-			SetIsLowerRightLeftEdgeAtGround();
-			SetIsFoothold();
-			SetIsTopEdge();
-			SetIsBodyWallFacingAndNormalVector();
-			SetCanGrabWallFromTopAndNormalVector();
 
 			if (ClimbStartEnoughSpaceConditionForGround())
 			{
@@ -434,6 +388,8 @@ void AMain::MovementStatusManager(float DeltaTime)
 				}
 
 			}
+
+			SetCanGrabWallFromTopAndNormalVector();
 
 		}
 
@@ -1516,7 +1472,7 @@ void AMain::StartClimb()
 	SetActorRotation(MovementRotation);
 	ClimbStartTerm = InitClimbStartTerm;
 	SetMovementStatus(EMovementStatus::EMS_Climbing);
-	bIsCanGrab = false;
+	bIsCanGrabWall = false;
 	GetCharacterMovement()->Velocity = FVector(0.f, 0.f, 0.f);
 	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Flying);
 	GetCharacterMovement()->bOrientRotationToMovement = false;
@@ -1549,6 +1505,9 @@ bool AMain::ClimbStartInputDirectionCondition()
 
 bool AMain::ClimbMaintainCondition()
 {
+	SetIsBodyWallFacingAndNormalVector();
+	SetIsGround();
+
 	if ((bIsBodyWallFacing || !(GetClimbStatus() == EClimbStatus::ECS_NormalClimb)) && !((bIsGround) && (MoveForwardInputValue < 0.0)))
 	{
 		return true;
@@ -1559,6 +1518,10 @@ bool AMain::ClimbMaintainCondition()
 
 bool AMain::ClimbUpCondition()
 {
+	SetIsBottomEdge();
+	SetIsLowerRightLeftEdgeAtGround();
+	SetIsTopEdge();
+	SetClimbUpEnoughSpace();
 
 	if ( 
 		( bIsTopEdge && bClimbUpEnoughSpace && !(GetClimbStatus() == EClimbStatus::ECS_DashJump)  || ((GetClimbStatus() == EClimbStatus::ECS_DashJump) && !bIsBottomEdge)) &&
@@ -1574,6 +1537,13 @@ bool AMain::ClimbUpCondition()
 
 bool AMain::FrontFlipCondition()
 {
+	SetIsRightLeftEdgeAtNormal();
+	SetIsLowerRightLeftEdgeAtGround();
+	SetIsFoothold();
+	SetIsTopEdge();
+	SetIsBodyWallFacingAndNormalVector();
+	SetCanGrabWallFromTopAndNormalVector();
+
 	if ( bIsRightEdge && bIsLeftEdge & !bIsLowerLeftEdge && !bIsLowerRightEdge && bIsFoothold && bIsTopEdge && !GetCharacterMovement()->IsFalling())
 	{
 		return true;
@@ -1967,12 +1937,6 @@ void AMain::SpaceBarPressed()
 	}
 	else 
 	{
-		SetIsRightLeftEdgeAtNormal();
-		SetIsLowerRightLeftEdgeAtGround();
-		SetIsFoothold();
-		SetIsTopEdge();
-		SetIsBodyWallFacingAndNormalVector();
-		SetCanGrabWallFromTopAndNormalVector();
 		if (FrontFlipCondition())
 		{
 			FrontFlip();
@@ -2022,9 +1986,9 @@ void AMain::WallJump()
 	GetWorld()->GetTimerManager().SetTimer(WaitHandle, FTimerDelegate::CreateLambda([&]()
 		{
 			GetCharacterMovement()->GravityScale = 1.0f;
-			bIsCanGrab = true;
+			bIsCanGrabWall = true;
 
-		}), WaitTime, false); //반복도 여기서 추가 변수를 선언해 설정가능
+		}), WaitTime, false);
 
 }
 
@@ -2125,15 +2089,16 @@ void AMain::GrabWallFromTop()
 		float WaitTime = PlayAnimMontage(GrabWallFromTopAnimMontage) - 0.3f;
 		GetWorld()->GetTimerManager().SetTimer(WaitHandle, FTimerDelegate::CreateLambda([&]()
 			{
-				bIsCanGrab = true;
+				bIsCanGrabWall = true;
 
-			}), WaitTime, false); //반복도 여기서 추가 변수를 선언해 설정가능
+			}), WaitTime, false);
 	}
 }
 
 
 bool AMain::GrabWallFromTopCondition()
 {
+
 	if (GetMovementStatus() == EMovementStatus::EMS_Normal && !GetCharacterMovement()->IsFalling() && bCanGrabWallFromTop)
 	{
 		return true;
@@ -2144,6 +2109,11 @@ bool AMain::GrabWallFromTopCondition()
 
 bool AMain::ClimbStartEnoughSpaceCondition()
 {
+	SetIsRightLeftEdgeAtNormal();
+	SetIsFoothold();
+	SetIsBodyWallFacingAndNormalVector();
+	SetIsTopEdge();
+
 	if (!bIsRightEdge && !bIsLeftEdge && !bIsTopEdge && bIsFoothold && bIsBodyWallFacing)
 	{
 		return true;
@@ -2154,6 +2124,11 @@ bool AMain::ClimbStartEnoughSpaceCondition()
 
 bool AMain::ClimbStartEnoughSpaceConditionForGround()
 {
+	SetIsRightLeftEdgeAtNormal();
+	SetIsFoothold();
+	SetIsTopEdge();
+	SetIsBodyWallFacingAndNormalVector();
+
 	if (!bIsRightEdge && !bIsLeftEdge && bIsFoothold && bIsBodyWallFacing)
 	{
 		return true;
@@ -2277,5 +2252,41 @@ void AMain::TurnCornerOutsideLeft()
 			}), WaitTime, false); //반복도 여기서 추가 변수를 선언해 설정가능
 
 		SetClimbStatus(EClimbStatus::ECS_TurnCorner);
+	}
+}
+
+void AMain::TurnCornerVariableRenewal()
+{
+	SetIsRightLeftEdgeAtClimbing();
+	SetCanLeftTurnInsideCorner();
+	SetCanRightTurnInsideCorner();
+	SetCanLeftTurnOutsideCorner();
+	SetCanRightTurnOutsideCorner();
+}
+
+void AMain::AttachCharacterToWall()
+{
+	SetTooFarFromWall();
+	if (bTooFarFromWall)
+	{
+		const FVector Direction = GetActorForwardVector();
+		AddMovementInput(Direction, 1.0f);
+	}
+}
+
+void AMain::AttachCharacterToGround()
+{
+	SetClimbUpTraceGround();
+	SetIsBodyWallFacingAndNormalVector();
+	if (bClimbUpTraceGround && !bIsBodyWallFacing)
+	{
+		GetCharacterMovement()->bOrientRotationToMovement = true;
+		GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Falling);
+		const FVector Direction = -GetActorUpVector();
+		FVector Position = GetActorLocation();
+		Position.Z = Position.Z - 1.f;
+		SetActorLocation(Position);
+		SetMovementStatus(EMovementStatus::EMS_Normal);
+
 	}
 }

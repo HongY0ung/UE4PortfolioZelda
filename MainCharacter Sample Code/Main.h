@@ -101,7 +101,7 @@ public:
 	bool bIsFoothold;
 	bool bIsGround;
 	bool bIsTopEdge;
-	bool bIsCanGrab;
+	bool bIsCanGrabWall;
 
 	bool bIsBodyWallFacing;
 	FVector NormalVectorBodyWallFacing;
@@ -357,10 +357,15 @@ public:
 	void SetIsRightLeftEdgeAtClimbing();
 	void SetIsGround();
 
-	void SetTooFarFromWall();
 	void SetIsBodyWallFacingAndNormalVector();
 
+	/* Climbing Attach to wall*/
+	void AttachCharacterToWall();
+	void SetTooFarFromWall();
+
 	/* Climbing::Turn Corner */
+	// Variable Initialization
+	void TurnCornerVariableRenewal();
 	// Inside
 	void TurnCornerInsideRight();
 	void TurnCornerInsideLeft();
@@ -396,6 +401,8 @@ public:
 	bool ClimbUpCondition();
 	void SetClimbUpEnoughSpace();
 	void SetClimbUpTraceGround();
+
+	void AttachCharacterToGround();
 
 	/* Climb Down */
 	void GrabWallFromTop();
