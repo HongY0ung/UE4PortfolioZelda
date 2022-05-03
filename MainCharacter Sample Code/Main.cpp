@@ -202,46 +202,28 @@ void AMain::MovementStatusManager(float DeltaTime)
 		}
 		else
 		{
-			AttachCharacterToWall();
-
 			if (ClimbMaintainCondition())
 			{
 				if (!(GetClimbStatus() == EClimbStatus::ECS_TurnCorner))
 				{
 					if (ClimbUpCondition())
 					{
-						// Climb Up
+						// Start Climb Up
 						ClimbUp();
 					}
-					else
+					else if(TurnCornerCondition())
 					{
-						// Can do Turn Corner Check
-						TurnCornerVariableRenewal();
-
-						if (TurnCornerInsideRightCondition())
-						{
-							TurnCornerInsideRight();
-						}
-						else if (TurnCornerInsideLeftCondition())
-						{
-							TurnCornerInsideLeft();
-						}
-						else if (TurnCornerOutsideRightCondition())
-						{
-							TurnCornerOutsideRight();
-						}
-						else if (TurnCornerOutsideLeftCondition())
-						{
-							TurnCornerOutsideLeft();
-						}
+						// Start Turn Corner
+						TurnCorner();
 					}
-
 				}
 			}
 			else
 			{
 				StopClimb();
 			}
+
+			AttachCharacterToWall();
 		}
 
 
@@ -276,13 +258,11 @@ void AMain::MovementStatusManager(float DeltaTime)
 		}
 		else
 		{
-			if (!(GetStaminaStatus() == EStaminaStatus::ESS_Exhausted))
+			if (StartClimbWhileWallJumpCondition())
 			{
-				if (bIsCanGrabWall && (ClimbStartEnoughSpaceCondition()))
-				{
-					StartClimb();
-				}
+				StartClimb();
 			}
+
 		}
 	}
 	else if (GetMovementStatus() == EMovementStatus::EMS_Gliding)
@@ -291,34 +271,12 @@ void AMain::MovementStatusManager(float DeltaTime)
 		{
 			if (EnoughSpaceForGliding())
 			{
-				if (this->GetVelocity().Z < -200.f)
-				{
-					GetCharacterMovement()->GravityScale = 0.0f;
-					GetMovementComponent()->Velocity.Z = -200.f;
-				}
-				else
-				{
-					GetCharacterMovement()->GravityScale = 0.3f;
-				}
+				GlidingVelocityManger();
 
-
-				if (ClimbStartEnoughSpaceCondition())
+				if (StartClimbWhileGlidingCondition(DeltaTime))
 				{
-					if (ClimbStartInputDirectionCondition())
-					{
-						ClimbStartTerm -= DeltaTime;
-						//UE_LOG(LogTemp, Warning, TEXT("I'm in air~"));
-					}
-					else
-					{
-						ClimbStartTerm = InitClimbStartTerm;
-					}
-
-					if (ClimbStartTerm <= 0.f)
-					{
-						StopGliding();
-						StartClimb();
-					}
+					StopGliding();
+					StartClimb();
 				}
 			}
 			else
@@ -337,9 +295,9 @@ void AMain::MovementStatusManager(float DeltaTime)
 		FVector Position = GetActorLocation();
 		Position.Z = Position.Z - 0.1f;
 		SetActorLocation(Position);
+
 		if (bIsCanGrabWall)
 		{
-
 			if (ClimbStartEnoughSpaceCondition())
 			{
 				StartClimb();
@@ -353,7 +311,6 @@ void AMain::MovementStatusManager(float DeltaTime)
 	}
 	else
 	{
-
 		if (GetStaminaStatus() == EStaminaStatus::ESS_Exhausted)
 		{
 			GetCharacterMovement()->MaxWalkSpeed = 100.f;
@@ -369,25 +326,11 @@ void AMain::MovementStatusManager(float DeltaTime)
 				GetCharacterMovement()->MaxWalkSpeed = 500.f;
 			}
 
-
-			if (ClimbStartEnoughSpaceConditionForGround())
+			if (StartClimbAtNormalStatusCondition(DeltaTime))
 			{
-				if (ClimbStartInputDirectionCondition())
-				{
-					ClimbStartTerm -= DeltaTime;
-					//UE_LOG(LogTemp, Warning, TEXT("I'm in air~"));
-				}
-				else
-				{
-					ClimbStartTerm = InitClimbStartTerm;
-				}
-
-				if ((GetMovementStatus() == EMovementStatus::EMS_ClimbDown) || (ClimbStartTerm <= 0.0))
-				{
-					StartClimb();
-				}
-
+				StartClimb();
 			}
+
 
 			SetCanGrabWallFromTopAndNormalVector();
 
@@ -431,7 +374,9 @@ void AMain::StaminaStatusManager(float DeltaTime)
 			SetStaminaStatus(EStaminaStatus::ESS_Normal);
 		}
 	}
-	else if (bIsStaminaConsumSprinting && (GetStaminaStatus() != EStaminaStatus::ESS_Exhausted) && GetMovementStatus() != EMovementStatus::EMS_FrontFlip)
+	else if (
+		bIsStaminaConsumSprinting && (GetStaminaStatus() != EStaminaStatus::ESS_Exhausted) 
+		&& GetMovementStatus() != EMovementStatus::EMS_FrontFlip)
 	{
 		SetStaminaStatus(EStaminaStatus::ESS_Sprinting);
 
@@ -488,8 +433,6 @@ void AMain::StaminaStatusManager(float DeltaTime)
 			SprintJumpStaminaConsumDuration = InitSprintJumpStaminaConsumDuration;
 		}
 	}
-
-
 
 }
 
@@ -696,6 +639,12 @@ void AMain::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 	
 	check(PlayerInputComponent);
 
+	PlayerInputComponent->BindAxis("MoveForward", this, &AMain::MoveForward);
+	PlayerInputComponent->BindAxis("MoveRight", this, &AMain::MoveRight);
+
+	PlayerInputComponent->BindAxis("TurnRate", this, &AMain::TurnAtRate);
+	PlayerInputComponent->BindAxis("LookUpRate", this, &AMain::LookUpAtRate);
+
 	PlayerInputComponent->BindAction("SpaceBar", IE_Pressed, this, &AMain::SpaceBarPressed);
 	PlayerInputComponent->BindAction("SpaceBar", IE_Released, this, &AMain::SpaceBarReleased);
 
@@ -707,13 +656,6 @@ void AMain::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 	
 	PlayerInputComponent->BindAction("F_Keyboard", IE_Pressed, this, &AMain::FKeyPressed);
 	PlayerInputComponent->BindAction("F_Keyboard", IE_Released, this, &AMain::FKeyReleased);
-
-	PlayerInputComponent->BindAxis("MoveForward", this, &AMain::MoveForward);
-	PlayerInputComponent->BindAxis("MoveRight", this, &AMain::MoveRight);
-
-	PlayerInputComponent->BindAxis("TurnRate", this, &AMain::TurnAtRate);
-	PlayerInputComponent->BindAxis("LookUpRate", this, &AMain::LookUpAtRate);
-
 }
 
 void AMain::Jump()
@@ -836,8 +778,6 @@ void AMain::MoveForward(float Value)
 }
 
 
-
-
 void AMain::MoveRight(float Value)
 {
 	if (Value < 0.1f && Value > -0.1f)
@@ -948,7 +888,6 @@ void AMain::TurnAtRate(float Rate)
 	AddControllerYawInput(Rate * BaseTurnRate * GetWorld()->GetDeltaSeconds());
 }
 
-
 void AMain::LookUpAtRate(float Rate)
 {
 	if (Rate < 0.1f && Rate > -0.1f)
@@ -959,6 +898,140 @@ void AMain::LookUpAtRate(float Rate)
 	LookUpValue = Rate;
 
 	AddControllerPitchInput(Rate * BaseLookUpRate * GetWorld()->GetDeltaSeconds());
+}
+
+void AMain::SpaceBarPressed()
+{
+	bIsSpacebarDown = true;
+	if (ClimbDashJumpCondition())
+	{
+		ClimbDashJump();
+	}
+	else if (WallJumpCondition())
+	{
+		WallJump();
+	}
+	else if (GlidingCondition() && GetMovementStatus() != EMovementStatus::EMS_Gliding && CurrentStamina > 0)
+	{
+		if (GlidingCoolTime <= 0)
+		{
+			StartGliding();
+		}
+	}
+	else if (GetMovementStatus() == EMovementStatus::EMS_Gliding)
+	{
+		StopGliding();
+	}
+	else if (GetMovementStatus() == EMovementStatus::EMS_ClimbUp)
+	{
+
+	}
+	else if (GetMovementStatus() == EMovementStatus::EMS_ClimbDown)
+	{
+
+	}
+	else if (GetMovementStatus() == EMovementStatus::EMS_FrontFlip)
+	{
+
+	}
+	else if (GetMovementStatus() == EMovementStatus::EMS_Climbing && GetClimbStatus() != EClimbStatus::ECS_NormalClimb)
+	{
+
+	}
+	else 
+	{
+		if (FrontFlipCondition())
+		{
+			FrontFlip();
+		}
+		else
+		{
+			Jump();
+		}
+	}
+}
+
+void AMain::SpaceBarReleased()
+{
+	bIsSpacebarDown = false;
+	StopJumping();
+}
+
+void AMain::LeftShiftPressed()
+{
+	bIsLeftShiftKeyDown = true;
+	if (GetMovementStatus() == EMovementStatus::EMS_Climbing && !(GetClimbStatus() == EClimbStatus::ECS_DashJump) && !(GetClimbStatus() == EClimbStatus::ECS_TurnCorner))
+	{
+		GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Falling);
+		GetCharacterMovement()->bOrientRotationToMovement = true;
+		SetMovementStatus(EMovementStatus::EMS_HaltClimbing);
+	}
+}
+
+void AMain::LeftShiftReleased()
+{
+	bIsLeftShiftKeyDown = false;
+}
+
+void AMain::QKeyPressed()
+{
+	bIsQKeyDown = true;
+}
+
+void AMain::QKeyReleased()
+{
+	bIsQKeyDown = false;
+}
+
+void AMain::FKeyPressed()
+{
+	bIsFKeyDown = true;
+	if (GrabWallFromTopCondition())
+	{
+		GrabWallFromTop();
+	}
+}
+
+void AMain::FKeyReleased()
+{
+	bIsFKeyDown = false;
+}
+
+
+
+
+EMovementStatus AMain::GetMovementStatus()
+{
+	return MovementStatus;
+}
+
+
+void AMain::SetMovementStatus(EMovementStatus Status)
+{
+	MovementStatus = Status;
+}
+
+EClimbStatus AMain::GetClimbStatus()
+{
+	return ClimbStatus;
+}
+
+EStaminaStatus AMain::GetStaminaStatus()
+{
+	return StaminaStatus;
+}
+
+
+void AMain::SetStaminaStatus(EStaminaStatus Status)
+{
+	StaminaStatus = Status;
+}
+
+
+
+void AMain::SetClimbStatus(EClimbStatus Status)
+{
+	ClimbStatus = Status;
 }
 
 bool AMain::EnoughSpaceForGliding()
@@ -1356,8 +1429,6 @@ void AMain::SetCanLeftTurnOutsideCorner()
 
 }
 
-
-
 void AMain::SetClimbUpEnoughSpace()
 {
 	const FName TraceTag("MyTraceTag");
@@ -1419,39 +1490,7 @@ void AMain::SetIsBodyWallFacingAndNormalVector()
 	}
 }
 
-EStaminaStatus AMain::GetStaminaStatus()
-{
-	return StaminaStatus;
-}
 
-
-void AMain::SetStaminaStatus(EStaminaStatus Status)
-{
-	StaminaStatus = Status;
-}
-
-
-EMovementStatus AMain::GetMovementStatus()
-{
-	return MovementStatus;
-}
-
-
-void AMain::SetMovementStatus(EMovementStatus Status)
-{
-	MovementStatus = Status;
-}
-
-EClimbStatus AMain::GetClimbStatus()
-{
-	return ClimbStatus;
-}
-
-
-void AMain::SetClimbStatus(EClimbStatus Status)
-{
-	ClimbStatus = Status;
-}
 
 void AMain::StopClimb()
 {
@@ -1459,9 +1498,6 @@ void AMain::StopClimb()
 	SetMovementStatus(EMovementStatus::EMS_Normal);
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 }
-
-
-
 
 
 void AMain::StartClimb()
@@ -1477,6 +1513,52 @@ void AMain::StartClimb()
 	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Flying);
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	bIsJumping = false;
+}
+
+bool AMain::StartClimbAtNormalStatusCondition(float DeltaTime)
+{
+	if (ClimbStartEnoughSpaceConditionForGround())
+	{
+		if (ClimbStartInputDirectionCondition())
+		{
+			ClimbStartTerm -= DeltaTime;
+			//UE_LOG(LogTemp, Warning, TEXT("I'm in air~"));
+		}
+		else
+		{
+			ClimbStartTerm = InitClimbStartTerm;
+		}
+
+		if (ClimbStartTerm <= 0.0)
+		{
+			return true;
+		}
+
+	}
+	return false;
+}
+
+bool AMain::StartClimbWhileGlidingCondition(float DeltaTime)
+{
+	if (ClimbStartEnoughSpaceCondition())
+	{
+		if (ClimbStartInputDirectionCondition())
+		{
+			ClimbStartTerm -= DeltaTime;
+			//UE_LOG(LogTemp, Warning, TEXT("I'm in air~"));
+		}
+		else
+		{
+			ClimbStartTerm = InitClimbStartTerm;
+		}
+
+		if (ClimbStartTerm <= 0.f)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool AMain::ClimbStartInputDirectionCondition()
@@ -1551,6 +1633,8 @@ bool AMain::FrontFlipCondition()
 	return false;
 }
 
+
+
 bool AMain::TurnCornerInsideRightCondition()
 {
 	if (bCanRightTurnInsideCorner && ( ( MoveRightInputValue > 0.0f )  || (GetClimbStatus() == EClimbStatus::ECS_DashJump && bIsRightDashing) ) )
@@ -1591,6 +1675,51 @@ bool AMain::TurnCornerOutsideLeftCondition()
 	
 
 	return false;
+}
+
+bool AMain::TurnCornerCondition()
+{
+	// Can do Turn Corner Check
+	TurnCornerVariableRenewal();
+
+	if (TurnCornerInsideRightCondition())
+	{
+		return true;
+	}
+	else if (TurnCornerInsideLeftCondition())
+	{
+		return true;
+	}
+	else if (TurnCornerOutsideRightCondition())
+	{
+		return true;
+	}
+	else if (TurnCornerOutsideLeftCondition())
+	{
+		return true;
+	}
+
+	return false;
+}
+
+void AMain::TurnCorner()
+{
+	if (TurnCornerInsideRightCondition())
+	{
+		TurnCornerInsideRight();
+	}
+	else if (TurnCornerInsideLeftCondition())
+	{
+		TurnCornerInsideLeft();
+	}
+	else if (TurnCornerOutsideRightCondition())
+	{
+		TurnCornerOutsideRight();
+	}
+	else if (TurnCornerOutsideLeftCondition())
+	{
+		TurnCornerOutsideLeft();
+	}
 }
 
 
@@ -1895,71 +2024,7 @@ bool AMain::ClimbDashCondition_DL()
 	return false;
 }
 
-void AMain::SpaceBarPressed()
-{
-	bIsSpacebarDown = true;
-	if (ClimbDashJumpCondition())
-	{
-		ClimbDashJump();
-	}
-	else if (WallJumpCondition())
-	{
-		WallJump();
-	}
-	else if (GlidingCondition() && GetMovementStatus() != EMovementStatus::EMS_Gliding && CurrentStamina > 0)
-	{
-		if (GlidingCoolTime <= 0)
-		{
-			StartGliding();
-		}
 
-	
-	}
-	else if (GetMovementStatus() == EMovementStatus::EMS_Gliding)
-	{
-		StopGliding();
-	}
-	else if (GetMovementStatus() == EMovementStatus::EMS_ClimbUp)
-	{
-
-	}
-	else if (GetMovementStatus() == EMovementStatus::EMS_ClimbDown)
-	{
-
-	}
-	else if (GetMovementStatus() == EMovementStatus::EMS_FrontFlip)
-	{
-
-	}
-	else if (GetMovementStatus() == EMovementStatus::EMS_Climbing && GetClimbStatus() != EClimbStatus::ECS_NormalClimb)
-	{
-
-	}
-	else 
-	{
-		if (FrontFlipCondition())
-		{
-			FrontFlip();
-		}
-		else
-		{
-			Jump();
-		}
-
-
-	}
-
-
-
-}
-
-void AMain::SpaceBarReleased()
-{
-
-	bIsSpacebarDown = false;
-	StopJumping();
-
-}
 
 
 void AMain::WallJump()
@@ -2018,6 +2083,16 @@ void AMain::WallJumpStaminaManage()
 
 }
 
+bool AMain::StartClimbWhileWallJumpCondition()
+{
+	if (!(GetStaminaStatus() == EStaminaStatus::ESS_Exhausted) && bIsCanGrabWall && (ClimbStartEnoughSpaceCondition()))
+	{
+		return true;
+	}
+
+	return false;
+}
+
 bool AMain::GlidingCondition()
 {
 	if ((GetMovementStatus() == EMovementStatus::EMS_Normal || 
@@ -2036,45 +2111,19 @@ bool AMain::GlidingCondition()
 	return false;
 }
 
-void AMain::LeftShiftPressed()
+void AMain::GlidingVelocityManger()
 {
-	bIsLeftShiftKeyDown = true;
-	if (GetMovementStatus() == EMovementStatus::EMS_Climbing && !(GetClimbStatus() == EClimbStatus::ECS_DashJump) && !(GetClimbStatus() == EClimbStatus::ECS_TurnCorner))
+	if (this->GetVelocity().Z < -200.f)
 	{
-		GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Falling);
-		GetCharacterMovement()->bOrientRotationToMovement = true;
-		SetMovementStatus(EMovementStatus::EMS_HaltClimbing);
+		GetCharacterMovement()->GravityScale = 0.0f;
+		GetMovementComponent()->Velocity.Z = -200.f;
+	}
+	else
+	{
+		GetCharacterMovement()->GravityScale = 0.3f;
 	}
 }
 
-void AMain::LeftShiftReleased()
-{
-	bIsLeftShiftKeyDown = false;
-}
-
-void AMain::QKeyPressed()
-{
-	bIsQKeyDown = true;
-}
-
-void AMain::QKeyReleased()
-{
-	bIsQKeyDown = false;
-}
-
-void AMain::FKeyPressed()
-{
-	bIsFKeyDown = true;
-	if (GrabWallFromTopCondition())
-	{
-		GrabWallFromTop();
-	}
-}
-
-void AMain::FKeyReleased()
-{
-	bIsFKeyDown = false;
-}
 
 void AMain::GrabWallFromTop()
 {

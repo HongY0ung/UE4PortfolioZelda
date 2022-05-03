@@ -341,6 +341,12 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SetClimbStatus(EClimbStatus Status);
 
+
+	/* Start Climb */
+	bool StartClimbAtNormalStatusCondition(float DeltaTime);
+	bool StartClimbWhileGlidingCondition(float DeltaTime);
+	bool StartClimbWhileWallJumpCondition();
+
 	/* Climbing */
 	void StartClimb();
 	void StopClimb();
@@ -364,6 +370,8 @@ public:
 	void SetTooFarFromWall();
 
 	/* Climbing::Turn Corner */
+	void TurnCorner();
+	bool TurnCornerCondition();
 	// Variable Initialization
 	void TurnCornerVariableRenewal();
 	// Inside
@@ -421,11 +429,14 @@ public:
 	bool WallJumpCondition();
 	void WallJumpStaminaManage();
 
+
 	/* Glidinig */
 	void StartGliding();
 	void StopGliding();
 	bool EnoughSpaceForGliding();
 	bool GlidingCondition();
+
+	void GlidingVelocityManger();
 
 	/* input */
 	void SpaceBarPressed();
